@@ -312,11 +312,12 @@
     env: 0,
     pulse: 0,
     t: 0,
+    ph: 0, // накопленная фаза волн: скорость растёт вместе с громкостью
     last: performance.now(),
     rm: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
 
     tick(dt, now) {
-      let target = 0.06;
+      let target = 0.1 + 0.06 * Math.sin(this.t * 0.9);
       if (speech.phase === "speaking" && !state.paused) {
         if (speech.mode === "server") {
           // подсветка слов по расписанию, огибающая — по реальному сигналу
@@ -326,10 +327,10 @@
           setRev(n);
           const lv = speech.level();
           if (lv !== null) {
-            target = Math.min(1, 0.1 + lv * 3.4);
+            target = Math.min(1, 0.12 + lv * 5.5);
           } else {
             const syl = 0.5 + 0.5 * Math.sin(this.t * 9.2) * Math.sin(this.t * 3.1 + 1.3);
-            target = 0.42 + 0.16 * syl;
+            target = 0.5 + 0.3 * syl;
           }
         } else {
           const since = (now - speech.lastBoundary) / 1000;
@@ -341,14 +342,16 @@
             if (Math.abs((el * wps) % 1) < 0.12) this.pulse = 1;
           }
           const syl = 0.5 + 0.5 * Math.sin(this.t * 9.2) * Math.sin(this.t * 3.1 + 1.3);
-          target = 0.42 + 0.34 * this.pulse * Math.max(0, 1 - since * 1.4) + 0.16 * syl;
+          target = 0.5 + 0.4 * this.pulse * Math.max(0, 1 - since * 1.4) + 0.25 * syl;
         }
       } else if (speech.phase === "loading") {
-        target = 0.16 + 0.05 * Math.sin(this.t * 2.2);
+        target = 0.2 + 0.08 * Math.sin(this.t * 2.2);
       }
       this.pulse = Math.max(0, this.pulse - dt * 3.2);
-      const k = 1 - Math.pow(0.0016, dt);
+      // быстрая атака, плавный спад — движение живое, но без дёрганья
+      const k = target > this.env ? 1 - Math.pow(0.0001, dt) : 1 - Math.pow(0.008, dt);
       this.env += (target - this.env) * k;
+      this.ph += dt * (0.9 + 1.6 * this.env);
     },
 
     draw() {
@@ -367,10 +370,10 @@
       const cx = w / 2, cy = h / 2, S = Math.min(w, h);
       const env = this.rm ? 0 : this.env;
       const breathe = this.rm ? 1 :
-        (speech.phase === "idle" ? 1 + 0.03 * Math.sin(this.t * Math.PI / 2) :
-          (speech.phase === "loading" ? 0.965 : 1 + 0.018 * env));
-      const R0 = S * 0.30 * breathe;
-      const lw = Math.max(1.6, S * 0.0035);
+        (speech.phase === "idle" ? 1 + 0.035 * Math.sin(this.t * Math.PI / 2) :
+          (speech.phase === "loading" ? 0.96 : 1 + 0.05 * env));
+      const R0 = S * 0.29 * breathe;
+      const lw = Math.max(1.6, S * 0.0035) * (1 + 0.5 * env);
 
       const grad = (r) => {
         const g = ctx.createLinearGradient(cx - r, cy + r, cx + r, cy - r);
@@ -379,20 +382,20 @@
         return g;
       };
 
-      const gl = ctx.createRadialGradient(cx, cy, R0 * 0.1, cx, cy, R0 * 1.15);
-      gl.addColorStop(0, "rgba(255,140,61," + (0.05 + 0.09 * env).toFixed(3) + ")");
-      gl.addColorStop(0.55, "rgba(52,72,190," + (0.04 + 0.06 * env).toFixed(3) + ")");
+      const gl = ctx.createRadialGradient(cx, cy, R0 * 0.1, cx, cy, R0 * 1.2);
+      gl.addColorStop(0, "rgba(255,140,61," + (0.05 + 0.17 * env).toFixed(3) + ")");
+      gl.addColorStop(0.55, "rgba(52,72,190," + (0.04 + 0.12 * env).toFixed(3) + ")");
       gl.addColorStop(1, "rgba(10,14,26,0)");
       ctx.fillStyle = gl;
       ctx.beginPath();
-      ctx.arc(cx, cy, R0 * 1.15, 0, Math.PI * 2);
+      ctx.arc(cx, cy, R0 * 1.2, 0, Math.PI * 2);
       ctx.fill();
 
       const alphas = [0.92, 0.6, 0.36, 0.2];
       for (let r = 0; r < 4; r++) {
-        const R = R0 * (1 + 0.085 * r);
-        const amp = env * R0 * (0.05 + 0.022 * r);
-        const ph = this.t * 0.9 - r * 0.55;
+        const R = R0 * (1 + 0.09 * r);
+        const amp = env * R0 * (0.11 + 0.05 * r);
+        const ph = this.ph - r * 0.55;
         ctx.strokeStyle = grad(R);
         ctx.globalAlpha = alphas[r];
         ctx.lineWidth = Math.max(1.4, lw * (1 - r * 0.14));
