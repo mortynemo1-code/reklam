@@ -1,27 +1,14 @@
-// Слой работы с базой: SQLite через встроенный node:sqlite (Node 22+),
-// внешних зависимостей нет.
-const { DatabaseSync } = require("node:sqlite");
-const path = require("node:path");
-const fs = require("node:fs");
+// Слой работы с базой: PostgreSQL через пул соединений pg.
+// Подключение настраивается переменной DATABASE_URL
+// (postgres://user:pass@host:5432/dbname) либо стандартными
+// переменными окружения pg: PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE.
+const { Pool } = require("pg");
 
-const DATA_DIR = process.env.REKLAM_DATA_DIR || path.join(__dirname, "data");
-fs.mkdirSync(DATA_DIR, { recursive: true });
-
-const db = new DatabaseSync(path.join(DATA_DIR, "reklam.db"));
-
-db.exec(`
-  PRAGMA journal_mode = WAL;
-  CREATE TABLE IF NOT EXISTS reklamations (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    text       TEXT NOT NULL,
-    problem    TEXT NOT NULL DEFAULT '',
-    level      TEXT NOT NULL DEFAULT 'Федеральный уровень',
-    status     TEXT NOT NULL DEFAULT 'на рассмотрении',
-    position   INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`);
+const pool = new Pool(
+  process.env.DATABASE_URL
+    ? { connectionString: process.env.DATABASE_URL }
+    : { database: process.env.PGDATABASE || "reklam" }
+);
 
 const SEED = [
   {
@@ -44,49 +31,63 @@ const SEED = [
   }
 ];
 
-function seedIfEmpty() {
-  const { n } = db.prepare("SELECT COUNT(*) AS n FROM reklamations").get();
-  if (n > 0) return;
-  const ins = db.prepare(
-    "INSERT INTO reklamations (text, problem, level, status, position) VALUES (?, ?, ?, ?, ?)"
+async function init() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS reklamations (
+      id         SERIAL PRIMARY KEY,
+      text       TEXT NOT NULL,
+      problem    TEXT NOT NULL DEFAULT '',
+      level      TEXT NOT NULL DEFAULT 'Федеральный уровень',
+      status     TEXT NOT NULL DEFAULT 'на рассмотрении',
+      position   INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  const { rows: [{ n }] } = await pool.query("SELECT COUNT(*)::int AS n FROM reklamations");
+  if (n === 0) {
+    for (const [i, s] of SEED.entries()) {
+      await pool.query(
+        "INSERT INTO reklamations (text, problem, level, status, position) VALUES ($1, $2, $3, $4, $5)",
+        [s.text, s.problem, s.level, s.status, i + 1]
+      );
+    }
+  }
+}
+
+async function list() {
+  const { rows } = await pool.query("SELECT * FROM reklamations ORDER BY position, id");
+  return rows;
+}
+
+async function create({ text, problem = "", level = "Федеральный уровень", status = "на рассмотрении" }) {
+  const { rows: [row] } = await pool.query(
+    `INSERT INTO reklamations (text, problem, level, status, position)
+     VALUES ($1, $2, $3, $4, (SELECT COALESCE(MAX(position), 0) + 1 FROM reklamations))
+     RETURNING *`,
+    [text, problem, level, status]
   );
-  SEED.forEach((s, i) => ins.run(s.text, s.problem, s.level, s.status, i + 1));
-}
-seedIfEmpty();
-
-const rowById = db.prepare("SELECT * FROM reklamations WHERE id = ?");
-
-function list() {
-  return db.prepare("SELECT * FROM reklamations ORDER BY position, id").all();
+  return row;
 }
 
-function create({ text, problem = "", level = "Федеральный уровень", status = "на рассмотрении" }) {
-  const { p } = db.prepare("SELECT COALESCE(MAX(position), 0) AS p FROM reklamations").get();
-  const res = db
-    .prepare("INSERT INTO reklamations (text, problem, level, status, position) VALUES (?, ?, ?, ?, ?)")
-    .run(text, problem, level, status, p + 1);
-  return rowById.get(res.lastInsertRowid);
-}
-
-function update(id, { text, problem, level, status }) {
-  const row = rowById.get(id);
-  if (!row) return null;
-  db.prepare(
+async function update(id, { text, problem, level, status }) {
+  const { rows: [row] } = await pool.query(
     `UPDATE reklamations
-       SET text = ?, problem = ?, level = ?, status = ?, updated_at = datetime('now')
-     WHERE id = ?`
-  ).run(
-    text ?? row.text,
-    problem ?? row.problem,
-    level ?? row.level,
-    status ?? row.status,
-    id
+        SET text       = COALESCE($2, text),
+            problem    = COALESCE($3, problem),
+            level      = COALESCE($4, level),
+            status     = COALESCE($5, status),
+            updated_at = now()
+      WHERE id = $1
+      RETURNING *`,
+    [id, text ?? null, problem ?? null, level ?? null, status ?? null]
   );
-  return rowById.get(id);
+  return row || null;
 }
 
-function remove(id) {
-  return db.prepare("DELETE FROM reklamations WHERE id = ?").run(id).changes > 0;
+async function remove(id) {
+  const res = await pool.query("DELETE FROM reklamations WHERE id = $1", [id]);
+  return res.rowCount > 0;
 }
 
-module.exports = { list, create, update, remove };
+module.exports = { init, list, create, update, remove };

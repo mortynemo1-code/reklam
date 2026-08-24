@@ -67,23 +67,23 @@ async function handleApi(req, res, url) {
   if (!m) return sendJson(res, 404, { error: "не найдено" });
   const id = m[1] ? Number(m[1]) : null;
 
-  if (req.method === "GET" && id === null) return sendJson(res, 200, store.list());
+  if (req.method === "GET" && id === null) return sendJson(res, 200, await store.list());
 
   if (req.method === "POST" && id === null) {
     const { errors, out } = validate(await readBody(req), { requireText: true });
     if (errors.length) return sendJson(res, 400, { error: errors.join("; ") });
-    return sendJson(res, 201, store.create(out));
+    return sendJson(res, 201, await store.create(out));
   }
 
   if (req.method === "PUT" && id !== null) {
     const { errors, out } = validate(await readBody(req), { requireText: false });
     if (errors.length) return sendJson(res, 400, { error: errors.join("; ") });
-    const row = store.update(id, out);
+    const row = await store.update(id, out);
     return row ? sendJson(res, 200, row) : sendJson(res, 404, { error: "рекламация не найдена" });
   }
 
   if (req.method === "DELETE" && id !== null) {
-    return store.remove(id)
+    return (await store.remove(id))
       ? sendJson(res, 200, { ok: true })
       : sendJson(res, 404, { error: "рекламация не найдена" });
   }
@@ -108,10 +108,20 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith("/api/")) return await handleApi(req, res, url);
     return serveStatic(res, url.pathname);
   } catch (err) {
-    return sendJson(res, 400, { error: err.message });
+    const clientFault = err.message === "invalid JSON" || err.message === "body too large";
+    return sendJson(res, clientFault ? 400 : 500, { error: err.message });
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`Рекламации: http://localhost:${PORT}`);
-});
+store
+  .init()
+  .then(() => {
+    server.listen(PORT, () => {
+      console.log(`Рекламации: http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error("Не удалось подключиться к PostgreSQL:", err.message);
+    console.error("Проверьте DATABASE_URL или переменные PGHOST/PGUSER/PGPASSWORD/PGDATABASE.");
+    process.exit(1);
+  });
