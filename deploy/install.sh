@@ -53,8 +53,8 @@ if [ ! -f .env ]; then
   cat > .env << ENV
 POSTGRES_PASSWORD=$pass
 # Голос озвучки. Движок по умолчанию — нейроголоса Microsoft (edge):
-#   dmitry (мужской, по умолчанию), svetlana (женский)
-#TTS_VOICE=dmitry
+#   svetlana (женский, по умолчанию), dmitry (мужской)
+#TTS_VOICE=svetlana
 # Платный вариант повышенной надёжности — Яндекс SpeechKit:
 # создайте API-ключ в консоли Яндекс Облака и укажите его здесь,
 # голоса: alena, filipp, jane, ermil, marina, alexander и др.

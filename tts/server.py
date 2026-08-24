@@ -47,7 +47,7 @@ async def _edge_bytes(text, voice):
     return bytes(buf)
 
 def synth_edge(text, voice):
-    v = EDGE_VOICES.get(voice or "dmitry", voice if voice.startswith("ru-") else "ru-RU-DmitryNeural")
+    v = EDGE_VOICES.get(voice or "svetlana", voice if voice.startswith("ru-") else "ru-RU-SvetlanaNeural")
     return asyncio.run(_edge_bytes(text, v)), "audio/mpeg"
 
 # ── yandex speechkit ───────────────────────────────────────
