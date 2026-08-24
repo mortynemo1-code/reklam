@@ -17,7 +17,7 @@ services:
   app:
     build: .
     ports:
-      - "${PORT:-3000}:3000"
+      - "${PORT:-3012}:3012"
     environment:
       DATABASE_URL: postgres://reklam:${POSTGRES_PASSWORD:-reklam}@db:5432/reklam
     depends_on:

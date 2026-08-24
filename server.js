@@ -4,7 +4,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const store = require("./db");
 
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT) || 3012;
 const PUBLIC_DIR = path.join(__dirname, "public");
 
 const MIME = {

@@ -9,7 +9,7 @@ COPY server.js db.js ./
 COPY public ./public
 
 ENV NODE_ENV=production
-EXPOSE 3000
+EXPOSE 3012
 
 USER node
 CMD ["node", "server.js"]
