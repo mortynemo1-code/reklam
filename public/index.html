@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Озвучивание рекламаций</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23FF8C3D' stroke-width='6'/%3E%3Ccircle cx='50' cy='50' r='14' fill='%231F3FF5'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="stage-wrap" id="stageWrap">
+  <div class="stage">
+    <div class="circle">
+      <canvas id="rings"></canvas>
+      <div class="logo" id="logo">
+        <svg viewBox="0 0 100 100">
+          <defs>
+            <linearGradient id="lg1" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#FF8C3D"></stop>
+              <stop offset="100%" stop-color="#1F3FF5"></stop>
+            </linearGradient>
+          </defs>
+          <path d="M20,80 Q50,40 80,80 L80,90 L20,90 Z" fill="url(#lg1)" transform="translate(0,-10)"></path>
+          <circle cx="50" cy="20" r="8" fill="url(#lg1)"></circle>
+          <path d="M20 80 C 25 70, 35 60, 50 55" stroke="url(#lg1)" stroke-width="5" fill="none" stroke-linecap="round"></path>
+        </svg>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="kicker">
+        <span class="kicker-num" id="kickerNum">Пункт 01</span>
+        <span class="dot">·</span>
+        <span class="kicker-level" id="kickerLevel">—</span>
+      </div>
+
+      <div class="problem-block" id="problemBlock">
+        <div class="label">Проблема</div>
+        <div class="problem" id="problemText"></div>
+      </div>
+
+      <div class="title" id="titleWords"></div>
+
+      <div class="meta">
+        <span class="meta-cur" id="metaCur">01</span>
+        <span class="bar"><span class="bar-fill" id="barFill"></span></span>
+        <span id="metaTotal">01</span>
+        <span class="dot">·</span>
+        <span id="metaStatus" class="meta-status">—</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="empty-hint" id="emptyHint" hidden>
+    Пока нет ни одной рекламации — добавьте первую через кнопку «Рекламации».
+  </div>
+</div>
+
+<div class="panel" id="panel">
+  <button class="btn btn-primary" id="btnSpeak">Озвучить</button>
+  <button class="btn btn-ghost" id="btnStop">Стоп</button>
+  <span class="sep"></span>
+  <button class="btn btn-ghost btn-round" id="btnPrev" aria-label="Предыдущая">←</button>
+  <span class="counter" id="counter">01 / 01</span>
+  <button class="btn btn-ghost btn-round" id="btnNext" aria-label="Следующая">→</button>
+  <span class="sep"></span>
+  <button class="btn btn-ghost" id="btnManage">Рекламации</button>
+</div>
+
+<!-- Панель управления рекламациями -->
+<div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
+<aside class="drawer" id="drawer" aria-label="Управление рекламациями" hidden>
+  <div class="drawer-head">
+    <h2>Рекламации</h2>
+    <button class="btn btn-ghost btn-round" id="btnCloseDrawer" aria-label="Закрыть">✕</button>
+  </div>
+
+  <form class="editor" id="editorForm">
+    <div class="editor-title" id="editorTitle">Новая рекламация</div>
+    <label class="field">
+      <span>Текст рекламации *</span>
+      <textarea id="fText" rows="5" required
+        placeholder="Вставьте сюда текст рекламации…"></textarea>
+    </label>
+    <label class="field">
+      <span>Проблема (кратко)</span>
+      <input type="text" id="fProblem" placeholder="Например: заявки жителей теряются…">
+    </label>
+    <div class="field-row">
+      <label class="field">
+        <span>Уровень</span>
+        <select id="fLevel">
+          <option>Федеральный уровень</option>
+          <option>Региональный уровень</option>
+          <option>Муниципальный уровень</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Статус</span>
+        <select id="fStatus">
+          <option>на рассмотрении</option>
+          <option>принято</option>
+          <option>на голосовании</option>
+          <option>на доработке</option>
+        </select>
+      </label>
+    </div>
+    <div class="editor-actions">
+      <button type="submit" class="btn btn-primary" id="btnSave">Сохранить</button>
+      <button type="button" class="btn btn-ghost" id="btnCancelEdit" hidden>Отмена</button>
+    </div>
+    <div class="editor-error" id="editorError" hidden></div>
+  </form>
+
+  <ul class="list" id="itemList"></ul>
+</aside>
+
+<script src="app.js"></script>
+</body>
+</html>

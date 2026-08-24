@@ -1,0 +1,14 @@
+{
+  "name": "reklam",
+  "version": "1.0.0",
+  "description": "Сайт озвучивания рекламаций: текст → голос, с хранением и редактированием рекламаций в SQLite",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --no-warnings server.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "license": "MIT"
+}

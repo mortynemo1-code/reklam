@@ -1,0 +1,412 @@
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #0A0E1A;
+  color: #fff;
+  font-family: Manrope, system-ui, sans-serif;
+}
+
+body {
+  background: radial-gradient(120% 90% at 50% 42%, #101731 0%, #0A0E1A 62%);
+  overflow: hidden;
+}
+
+button { font: inherit; }
+
+/* ── сцена (режим «экран зала») ─────────────────────────── */
+.stage-wrap {
+  height: 100vh;
+  display: flex;
+  align-items: safe center;
+  justify-content: center;
+  padding: clamp(20px, 3.6vw, 90px);
+  padding-bottom: 140px;
+  overflow: hidden auto;
+}
+
+.stage {
+  width: 100%;
+  max-width: 2800px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(28px, 4.5vw, 130px);
+  font-size: clamp(14px, min(1.55vw, 2.6vh), 34px);
+}
+
+.circle {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: min(72vh, 40vw);
+  height: min(72vh, 40vw);
+}
+
+.circle canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.logo {
+  position: relative;
+  width: 16.8%;
+  opacity: 0.98;
+  filter: drop-shadow(0 0 10px rgba(255, 140, 61, 0.45));
+  transition: filter 0.4s ease;
+}
+
+.logo.speaking { filter: drop-shadow(0 0 26px rgba(255, 140, 61, 0.45)); }
+
+.logo svg { width: 100%; height: auto; display: block; }
+
+.content { flex: 1 1 0; min-width: 0; max-width: 1180px; }
+
+.kicker {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7em;
+  font-size: 0.82em;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.kicker-num {
+  background-image: linear-gradient(72deg, #FF8C3D, #5B72FF);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.dot { color: #3D4763; }
+
+.kicker-level { color: #8A93AD; letter-spacing: 0.12em; }
+
+.problem-block { margin-top: min(2em, 2.6vh); min-height: 2em; }
+
+.label {
+  color: #5F6884;
+  font-size: 0.7em;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.problem {
+  color: #98A1B8;
+  font-size: 1.02em;
+  line-height: 1.5;
+  margin-top: 0.5em;
+  max-width: 34em;
+  text-wrap: pretty;
+}
+
+.title {
+  margin-top: min(1.5em, 2vh);
+  font-size: min(2.2em, 4.4vh);
+  font-weight: 650;
+  letter-spacing: -0.022em;
+  line-height: 1.35;
+  color: #fff;
+  text-wrap: pretty;
+  max-width: 26em;
+}
+
+.title .w {
+  display: inline-block;
+  margin-right: 0.26em;
+  opacity: 0.06;
+  transform: translateY(8px);
+  filter: blur(4px);
+  transition: opacity 0.55s ease,
+              transform 0.55s cubic-bezier(0.22, 0.61, 0.36, 1),
+              filter 0.55s ease;
+}
+
+.title .w.on {
+  opacity: 1;
+  transform: translateY(0);
+  filter: blur(0);
+}
+
+.meta {
+  margin-top: min(2.4em, 3vh);
+  display: flex;
+  align-items: center;
+  gap: 1em;
+  color: #4E5774;
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+}
+
+.meta-cur { color: #98A1B8; }
+
+.bar {
+  flex: none;
+  width: 6em;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.09);
+  position: relative;
+  overflow: hidden;
+}
+
+.bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: linear-gradient(90deg, #FF8C3D, #1F3FF5);
+  transition: width 0.6s ease;
+}
+
+.empty-hint {
+  position: absolute;
+  color: #8A93AD;
+  font-size: 1.05rem;
+  max-width: 34em;
+  text-align: center;
+  line-height: 1.6;
+}
+
+/* ── нижняя панель ──────────────────────────────────────── */
+.panel {
+  position: fixed;
+  left: 50%;
+  bottom: clamp(18px, 2.4vw, 44px);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  max-width: calc(100vw - 28px);
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(12, 17, 32, 0.72);
+  backdrop-filter: blur(14px);
+  font-size: clamp(12px, 0.85vw, 17px);
+  white-space: nowrap;
+  z-index: 20;
+}
+
+.btn {
+  border-radius: 999px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+}
+
+.btn-primary {
+  padding: 0.75em 1.5em;
+  border: none;
+  background: linear-gradient(72deg, #FF8C3D, #1F3FF5);
+  color: #fff;
+  font-weight: 600;
+}
+
+.btn-primary:hover { filter: brightness(1.12); }
+
+.btn-ghost {
+  padding: 0.75em 1.2em;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: #C6CCDD;
+}
+
+.btn-ghost:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+
+.btn-round { width: 2.6em; height: 2.6em; padding: 0; }
+
+.counter {
+  color: #8A93AD;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  min-width: 5.4em;
+  text-align: center;
+}
+
+.sep {
+  width: 1px;
+  height: 1.8em;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 0.3em;
+}
+
+/* ── панель рекламаций ──────────────────────────────────── */
+.drawer[hidden],
+.drawer-backdrop[hidden] { display: none; }
+
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 8, 16, 0.55);
+  backdrop-filter: blur(3px);
+  z-index: 30;
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  width: min(480px, 100vw);
+  background: #0D1226;
+  border-left: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: -24px 0 60px rgba(0, 0, 0, 0.45);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 22px;
+  overflow-y: auto;
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.drawer-head h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background-image: linear-gradient(72deg, #FF8C3D, #5B72FF);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.editor {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.editor-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8A93AD;
+  margin-bottom: 10px;
+}
+
+.field { display: block; margin-bottom: 10px; flex: 1; }
+
+.field > span {
+  display: block;
+  font-size: 0.72rem;
+  color: #5F6884;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+
+.field textarea,
+.field input,
+.field select {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(10, 14, 26, 0.8);
+  color: #E7EAF3;
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 9px 11px;
+  resize: vertical;
+}
+
+.field textarea:focus,
+.field input:focus,
+.field select:focus {
+  outline: none;
+  border-color: rgba(255, 140, 61, 0.55);
+}
+
+.field-row { display: flex; gap: 10px; }
+
+.editor-actions { display: flex; gap: 8px; margin-top: 4px; }
+
+.editor-error {
+  margin-top: 8px;
+  color: #FF8C8C;
+  font-size: 0.85rem;
+}
+
+.list {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.item {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.item:hover { background: rgba(255, 255, 255, 0.05); }
+
+.item.active { border-color: rgba(255, 140, 61, 0.6); }
+
+.item-top {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6em;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8A93AD;
+}
+
+.item-num {
+  background-image: linear-gradient(72deg, #FF8C3D, #5B72FF);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.item-text {
+  margin-top: 6px;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: #C6CCDD;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.item-actions { display: flex; gap: 6px; margin-top: 10px; }
+
+.item-actions .btn { font-size: 0.78rem; padding: 0.5em 1em; }
+
+.btn-danger:hover {
+  background: rgba(255, 90, 90, 0.12);
+  color: #FF9B9B;
+  border-color: rgba(255, 90, 90, 0.4);
+}
+
+/* ── адаптив ────────────────────────────────────────────── */
+@media (max-width: 1080px) {
+  .stage { flex-direction: column; }
+  .circle { width: min(32vh, 62vw); height: min(32vh, 62vw); }
+  .title { font-size: 1.55em; }
+}
