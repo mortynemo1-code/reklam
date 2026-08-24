@@ -2,10 +2,18 @@
 const http = require("node:http");
 const path = require("node:path");
 const fs = require("node:fs");
+const crypto = require("node:crypto");
 const store = require("./db");
 
 const PORT = Number(process.env.PORT) || 3012;
 const PUBLIC_DIR = path.join(__dirname, "public");
+
+// Серверная озвучка (Silero TTS). Если TTS_URL не задан или сервис недоступен,
+// фронтенд сам откатывается на голос браузера (Web Speech API).
+const TTS_URL = process.env.TTS_URL || "";
+const TTS_VOICE = process.env.TTS_VOICE || "baya";
+const TTS_CACHE_MAX = 32;
+const ttsCache = new Map(); // hash(text+voice) → Buffer с WAV
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -62,7 +70,36 @@ function validate(payload, { requireText }) {
   return { errors, out };
 }
 
+async function handleTts(req, res) {
+  if (req.method !== "POST") return sendJson(res, 405, { error: "метод не поддерживается" });
+  if (!TTS_URL) return sendJson(res, 503, { error: "серверная озвучка не настроена" });
+
+  const body = await readBody(req);
+  const text = typeof body.text === "string" ? body.text.trim().slice(0, 4200) : "";
+  if (!text) return sendJson(res, 400, { error: "текст пуст" });
+
+  const key = crypto.createHash("sha256").update(TTS_VOICE + "\0" + text).digest("hex");
+  let wav = ttsCache.get(key);
+  if (!wav) {
+    const upstream = await fetch(TTS_URL + "/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, voice: TTS_VOICE })
+    }).catch((err) => ({ ok: false, statusText: err.message }));
+    if (!upstream.ok) {
+      return sendJson(res, 502, { error: "сервис озвучки недоступен: " + upstream.statusText });
+    }
+    wav = Buffer.from(await upstream.arrayBuffer());
+    if (ttsCache.size >= TTS_CACHE_MAX) ttsCache.delete(ttsCache.keys().next().value);
+    ttsCache.set(key, wav);
+  }
+
+  res.writeHead(200, { "Content-Type": "audio/wav", "Content-Length": wav.length });
+  res.end(wav);
+}
+
 async function handleApi(req, res, url) {
+  if (url.pathname === "/api/tts") return handleTts(req, res);
   const m = url.pathname.match(/^\/api\/reklamations(?:\/(\d+))?$/);
   if (!m) return sendJson(res, 404, { error: "не найдено" });
   const id = m[1] ? Number(m[1]) : null;

@@ -14,15 +14,25 @@ services:
       retries: 10
     restart: unless-stopped
 
+  tts:
+    build: ./tts
+    environment:
+      TTS_THREADS: ${TTS_THREADS:-4}
+    restart: unless-stopped
+
   app:
     build: .
     ports:
       - "${PORT:-3012}:3012"
     environment:
       DATABASE_URL: postgres://reklam:${POSTGRES_PASSWORD:-reklam}@db:5432/reklam
+      TTS_URL: http://tts:5002
+      TTS_VOICE: ${TTS_VOICE:-baya}
     depends_on:
       db:
         condition: service_healthy
+      tts:
+        condition: service_started
     restart: unless-stopped
 
 volumes:

@@ -1,5 +1,8 @@
-/* Озвучивание рекламаций: сцена «экран зала», Web Speech API,
-   CRUD рекламаций через REST API (/api/reklamations). */
+/* Озвучивание рекламаций: сцена «экран зала».
+   Озвучка: серверный Silero TTS (/api/tts → WAV) с подсветкой слов по
+   расчётному таймингу и анимацией круга от реальной амплитуды звука;
+   при недоступности сервера — откат на голос браузера (Web Speech API).
+   CRUD рекламаций — через REST API (/api/reklamations). */
 (() => {
   "use strict";
 
@@ -46,7 +49,7 @@
     "на рассмотрении": "#8A93AD"
   };
 
-  const RATE = 0.95;
+  const BROWSER_RATE = 0.95;
 
   const state = {
     items: [],
@@ -81,15 +84,126 @@
 
   // ── озвучка ────────────────────────────────────────────
   const speech = {
-    phase: "idle", // idle | listening | speaking
+    phase: "idle",   // idle | loading | speaking
+    mode: null,      // "server" | "browser"
+    seq: 0,          // токен для отмены запросов в полёте
+    rev: 0,
+
+    // серверный режим
+    audio: null,
+    audioUrl: null,
+    actx: null,
+    analyser: null,
+    tdBuf: null,
+    schedule: [],    // время начала каждого слова текста, сек
+
+    // браузерный режим (fallback)
     voices: null,
     starts: [],
     offset: 0,
     estStart: 0,
     gotBoundary: false,
     lastBoundary: 0,
-    rev: 0,
 
+    utterance(it) {
+      // для речи — номер без ведущего нуля, чтобы не звучало «ноль один»
+      const prefix = "Пункт " + (state.i + 1) + ". " + it.level + ". " +
+        (it.problem ? it.problem + " " : "");
+      return { prefix, body: it.text };
+    },
+
+    initAudio() {
+      if (this.audio) return;
+      this.audio = new Audio();
+      this.audio.preload = "auto";
+      this.audio.onended = () => this.finish();
+    },
+
+    ensureAnalyser() {
+      try {
+        if (!this.actx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return;
+          this.actx = new AC();
+          const src = this.actx.createMediaElementSource(this.audio);
+          this.analyser = this.actx.createAnalyser();
+          this.analyser.fftSize = 1024;
+          src.connect(this.analyser);
+          this.analyser.connect(this.actx.destination);
+          this.tdBuf = new Uint8Array(this.analyser.fftSize);
+        }
+        if (this.actx.state === "suspended") this.actx.resume();
+      } catch { /* без анализатора круг работает на псевдоогибающей */ }
+    },
+
+    level() {
+      if (!this.analyser) return null;
+      this.analyser.getByteTimeDomainData(this.tdBuf);
+      let s = 0;
+      for (let i = 0; i < this.tdBuf.length; i++) {
+        const v = (this.tdBuf[i] - 128) / 128;
+        s += v * v;
+      }
+      return Math.sqrt(s / this.tdBuf.length);
+    },
+
+    // Модель не отдаёт тайминги слов, поэтому распределяем длительность
+    // аудио по словам пропорционально их длине (плюс паузы на знаках).
+    buildSchedule(prefix, body, duration) {
+      const weight = (w) =>
+        w.length + 1 + (/[.!?…]$/.test(w) ? 6 : /[,;:—]$/.test(w) ? 2.5 : 0);
+      const pw = prefix.split(/\s+/).filter(Boolean).map(weight);
+      const bw = body.split(/\s+/).filter(Boolean).map(weight);
+      const total = pw.concat(bw).reduce((a, b) => a + b, 0) || 1;
+      let acc = pw.reduce((a, b) => a + b, 0);
+      this.schedule = bw.map((w) => {
+        const t = (acc / total) * duration;
+        acc += w;
+        return t;
+      });
+    },
+
+    async speak() {
+      const it = current();
+      if (!it) return;
+      this.cancelAll();
+      const mySeq = ++this.seq;
+      const { prefix, body } = this.utterance(it);
+
+      this.phase = "loading";
+      renderControls();
+      try {
+        const r = await fetch("/api/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: prefix + body })
+        });
+        if (!r.ok) throw new Error("tts " + r.status);
+        const blob = await r.blob();
+        if (this.seq !== mySeq) return; // пока грузили — нажали стоп/другой пункт
+
+        this.initAudio();
+        if (this.audioUrl) URL.revokeObjectURL(this.audioUrl);
+        this.audioUrl = URL.createObjectURL(blob);
+        this.audio.src = this.audioUrl;
+        this.ensureAnalyser();
+        await this.audio.play();
+        if (this.seq !== mySeq) { this.audio.pause(); return; }
+
+        this.buildSchedule(prefix, body, this.audio.duration || 1);
+        this.mode = "server";
+        this.phase = "speaking";
+        state.playing = true;
+        state.paused = false;
+        setRev(0);
+        renderControls();
+      } catch {
+        if (this.seq !== mySeq) return;
+        this.speakBrowser(prefix, body);
+      }
+    },
+
+    /* ── fallback: Web Speech API ── */
     pickVoice() {
       const synth = window.speechSynthesis;
       if (!synth) return null;
@@ -98,18 +212,13 @@
       return ru.find((v) => v.localService) || ru[0] || this.voices[0] || null;
     },
 
-    speak() {
+    speakBrowser(prefix, body) {
       const synth = window.speechSynthesis;
-      const it = current();
-      if (!synth || !it) return;
+      if (!synth) { this.finish(); return; }
       synth.cancel();
-
-      const prefix = "Пункт " + num(state.i) + ". " + it.level + ". " +
-        (it.problem ? it.problem + " " : "");
-      const body = it.text;
       const u = new SpeechSynthesisUtterance(prefix + body);
       u.lang = "ru-RU";
-      u.rate = RATE;
+      u.rate = BROWSER_RATE;
       u.pitch = 1;
       const v = this.pickVoice();
       if (v) u.voice = v;
@@ -121,6 +230,7 @@
       this.gotBoundary = false;
 
       u.onstart = () => {
+        this.mode = "browser";
         this.phase = "speaking";
         this.estStart = performance.now();
         this.lastBoundary = performance.now();
@@ -141,12 +251,14 @@
       };
       u.onend = () => this.finish();
       u.onerror = () => this.finish();
-      this.phase = "listening";
+      this.phase = "loading";
+      renderControls();
       synth.speak(u);
     },
 
     finish() {
       this.phase = "idle";
+      this.mode = null;
       state.playing = false;
       state.paused = false;
       const it = current();
@@ -155,15 +267,14 @@
     },
 
     toggle() {
-      const synth = window.speechSynthesis;
-      if (!synth) return;
+      if (this.phase === "loading") return;
       if (state.playing && !state.paused) {
-        synth.pause();
-        this.phase = "listening";
+        if (this.mode === "server") this.audio.pause();
+        else if (window.speechSynthesis) window.speechSynthesis.pause();
         state.paused = true;
       } else if (state.paused) {
-        synth.resume();
-        this.phase = "speaking";
+        if (this.mode === "server") this.audio.play();
+        else if (window.speechSynthesis) window.speechSynthesis.resume();
         state.paused = false;
       } else {
         this.speak();
@@ -172,9 +283,19 @@
       renderControls();
     },
 
-    stop() {
+    cancelAll() {
+      this.seq++;
+      if (this.audio) {
+        this.audio.pause();
+        this.audio.currentTime = 0;
+      }
       if (window.speechSynthesis) window.speechSynthesis.cancel();
+    },
+
+    stop() {
+      this.cancelAll();
       this.phase = "idle";
+      this.mode = null;
       state.playing = false;
       state.paused = false;
       setRev(0);
@@ -197,18 +318,32 @@
     tick(dt, now) {
       let target = 0.06;
       if (speech.phase === "speaking" && !state.paused) {
-        const since = (now - speech.lastBoundary) / 1000;
-        if (!speech.gotBoundary) {
-          // синтезатор не шлёт границы слов — оцениваем темп по rate
-          const wps = 2.5 * RATE;
-          const el = (now - speech.estStart) / 1000;
-          const n = Math.min(speech.starts.length, Math.floor(el * wps));
+        if (speech.mode === "server") {
+          // подсветка слов по расписанию, огибающая — по реальному сигналу
+          const t = speech.audio.currentTime;
+          let n = 0;
+          for (let k = 0; k < speech.schedule.length; k++) if (speech.schedule[k] <= t) n = k + 1;
           setRev(n);
-          if (Math.abs((el * wps) % 1) < 0.12) this.pulse = 1;
+          const lv = speech.level();
+          if (lv !== null) {
+            target = Math.min(1, 0.1 + lv * 3.4);
+          } else {
+            const syl = 0.5 + 0.5 * Math.sin(this.t * 9.2) * Math.sin(this.t * 3.1 + 1.3);
+            target = 0.42 + 0.16 * syl;
+          }
+        } else {
+          const since = (now - speech.lastBoundary) / 1000;
+          if (!speech.gotBoundary) {
+            const wps = 2.5 * BROWSER_RATE;
+            const el = (now - speech.estStart) / 1000;
+            const n = Math.min(speech.starts.length, Math.floor(el * wps));
+            setRev(n);
+            if (Math.abs((el * wps) % 1) < 0.12) this.pulse = 1;
+          }
+          const syl = 0.5 + 0.5 * Math.sin(this.t * 9.2) * Math.sin(this.t * 3.1 + 1.3);
+          target = 0.42 + 0.34 * this.pulse * Math.max(0, 1 - since * 1.4) + 0.16 * syl;
         }
-        const syl = 0.5 + 0.5 * Math.sin(this.t * 9.2) * Math.sin(this.t * 3.1 + 1.3);
-        target = 0.42 + 0.34 * this.pulse * Math.max(0, 1 - since * 1.4) + 0.16 * syl;
-      } else if (speech.phase === "listening") {
+      } else if (speech.phase === "loading") {
         target = 0.16 + 0.05 * Math.sin(this.t * 2.2);
       }
       this.pulse = Math.max(0, this.pulse - dt * 3.2);
@@ -233,7 +368,7 @@
       const env = this.rm ? 0 : this.env;
       const breathe = this.rm ? 1 :
         (speech.phase === "idle" ? 1 + 0.03 * Math.sin(this.t * Math.PI / 2) :
-          (speech.phase === "listening" ? 0.965 : 1 + 0.018 * env));
+          (speech.phase === "loading" ? 0.965 : 1 + 0.018 * env));
       const R0 = S * 0.30 * breathe;
       const lw = Math.max(1.6, S * 0.0035);
 
@@ -347,8 +482,10 @@
   }
 
   function renderControls() {
-    els.btnSpeak.textContent = state.playing && !state.paused ? "Пауза" :
-      (state.paused ? "Продолжить" : "Озвучить");
+    els.btnSpeak.textContent =
+      speech.phase === "loading" ? "Готовлю…" :
+      (state.playing && !state.paused ? "Пауза" :
+        (state.paused ? "Продолжить" : "Озвучить"));
     els.logo.classList.toggle("speaking", speech.phase === "speaking" && !state.paused);
   }
 
@@ -413,7 +550,7 @@
 
   function go(d) {
     if (!state.items.length) return;
-    const wasPlaying = state.playing && !state.paused;
+    const wasPlaying = (state.playing && !state.paused) || speech.phase === "loading";
     speech.stop();
     state.i = (state.i + d + state.items.length) % state.items.length;
     renderAll();
