@@ -1,33 +1,88 @@
-# Сервис озвучки: Silero TTS (v4_ru) за простым HTTP API.
-# POST /tts {"text": "...", "voice": "baya"} -> audio/wav (48 кГц, mono)
-# GET  /health -> {"ok": true}
+# Сервис озвучки с тремя движками:
+#   edge   — нейроголоса Microsoft Edge (по умолчанию; бесплатно, нужен интернет)
+#   yandex — Яндекс SpeechKit (нужен YANDEX_API_KEY; платно, самый надёжный)
+#   silero — локальная модель Silero v4 (офлайн-фолбэк, без интернета)
+# Выбор: TTS_ENGINE=auto|edge|yandex|silero (auto: yandex при наличии ключа,
+# иначе edge; при ошибке сетевого движка — автоматический откат на silero).
+#
+# POST /tts {"text": "...", "voice": "..."} -> audio/mpeg или audio/wav
+# GET  /health -> {"ok": true, ...}
+import asyncio
 import io
 import json
 import os
 import re
 import threading
+import urllib.parse
+import urllib.request
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-import numpy as np
-import torch
-
-MODEL_PATH = os.environ.get("MODEL_PATH", "/app/v4_ru.pt")
 PORT = int(os.environ.get("PORT", "5002"))
-SAMPLE_RATE = 48000
+ENGINE = os.environ.get("TTS_ENGINE", "auto").lower()
+YANDEX_API_KEY = os.environ.get("YANDEX_API_KEY", "")
+MODEL_PATH = os.environ.get("MODEL_PATH", "/app/v4_ru.pt")
 MAX_TEXT = 4200
-CHUNK_LIMIT = 800  # символов на один вызов модели
+SAMPLE_RATE = 48000
+CHUNK_LIMIT = 800
 
-torch.set_num_threads(int(os.environ.get("TTS_THREADS", "4")))
-model = torch.package.PackageImporter(MODEL_PATH).load_pickle("tts_models", "model")
-model.to(torch.device("cpu"))
-VOICES = [s for s in model.speakers if s != "random"]
-model_lock = threading.Lock()
-print(f"Модель загружена, голоса: {', '.join(VOICES)}", flush=True)
+EDGE_VOICES = {
+    "dmitry": "ru-RU-DmitryNeural",
+    "svetlana": "ru-RU-SvetlanaNeural"
+}
+SILERO_VOICES = ["aidar", "baya", "kseniya", "xenia", "eugene"]
+YANDEX_VOICES = ["alena", "filipp", "jane", "omazh", "zahar", "ermil",
+                 "marina", "alexander", "kirill", "anton", "dasha",
+                 "julia", "lera", "masha"]
 
+# ── edge ───────────────────────────────────────────────────
+async def _edge_bytes(text, voice):
+    import edge_tts
+    buf = bytearray()
+    async for chunk in edge_tts.Communicate(text, voice).stream():
+        if chunk["type"] == "audio":
+            buf.extend(chunk["data"])
+    if not buf:
+        raise RuntimeError("edge-tts вернул пустой ответ")
+    return bytes(buf)
 
-def split_text(text):
-    """Режем длинный текст по предложениям, чтобы не упереться в лимит модели."""
+def synth_edge(text, voice):
+    v = EDGE_VOICES.get(voice or "dmitry", voice if voice.startswith("ru-") else "ru-RU-DmitryNeural")
+    return asyncio.run(_edge_bytes(text, v)), "audio/mpeg"
+
+# ── yandex speechkit ───────────────────────────────────────
+def synth_yandex(text, voice):
+    data = urllib.parse.urlencode({
+        "text": text,
+        "lang": "ru-RU",
+        "voice": voice if voice in YANDEX_VOICES else "alena",
+        "format": "mp3"
+    }).encode()
+    req = urllib.request.Request(
+        "https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize",
+        data=data,
+        headers={"Authorization": "Api-Key " + YANDEX_API_KEY}
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        return resp.read(), "audio/mpeg"
+
+# ── silero (локальный фолбэк) ──────────────────────────────
+_silero = {"model": None, "np": None}
+_silero_lock = threading.Lock()
+
+def _load_silero():
+    if _silero["model"] is None:
+        import numpy as np
+        import torch
+        torch.set_num_threads(int(os.environ.get("TTS_THREADS", "4")))
+        model = torch.package.PackageImporter(MODEL_PATH).load_pickle("tts_models", "model")
+        model.to(torch.device("cpu"))
+        _silero["model"] = model
+        _silero["np"] = np
+        print("Silero: модель загружена", flush=True)
+    return _silero["model"], _silero["np"]
+
+def _split_text(text):
     parts, cur = [], ""
     for sent in re.split(r"(?<=[.!?…])\s+", text.strip()):
         if cur and len(cur) + len(sent) + 1 > CHUNK_LIMIT:
@@ -39,13 +94,14 @@ def split_text(text):
         parts.append(cur)
     return parts
 
-
-def synth_wav(text, voice):
+def synth_silero(text, voice):
+    model, np = _load_silero()
+    v = voice if voice in SILERO_VOICES else "baya"
     pause = np.zeros(int(SAMPLE_RATE * 0.12), dtype=np.float32)
     chunks = []
-    for part in split_text(text):
-        with model_lock:
-            audio = model.apply_tts(text=part, speaker=voice, sample_rate=SAMPLE_RATE)
+    for part in _split_text(text):
+        with _silero_lock:
+            audio = model.apply_tts(text=part, speaker=v, sample_rate=SAMPLE_RATE)
         chunks.append(audio.numpy())
         chunks.append(pause)
     data = np.concatenate(chunks) if chunks else np.zeros(1, dtype=np.float32)
@@ -56,9 +112,23 @@ def synth_wav(text, voice):
         w.setsampwidth(2)
         w.setframerate(SAMPLE_RATE)
         w.writeframes(pcm.tobytes())
-    return buf.getvalue()
+    return buf.getvalue(), "audio/wav"
 
+# ── выбор движка ───────────────────────────────────────────
+def synthesize(text, voice):
+    if ENGINE == "silero":
+        return synth_silero(text, voice)
+    if ENGINE == "yandex" or (ENGINE == "auto" and YANDEX_API_KEY):
+        primary = synth_yandex
+    else:
+        primary = synth_edge
+    try:
+        return primary(text, voice)
+    except Exception as err:  # noqa: BLE001 — сетевой движок недоступен
+        print(f"{primary.__name__} не сработал ({err}), откатываюсь на silero", flush=True)
+        return synth_silero(text, voice)
 
+# ── HTTP ───────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
     def _json(self, code, payload):
         body = json.dumps(payload, ensure_ascii=False).encode()
@@ -70,7 +140,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            self._json(200, {"ok": True, "voices": VOICES})
+            self._json(200, {"ok": True, "engine": ENGINE,
+                             "yandex_key": bool(YANDEX_API_KEY)})
         else:
             self._json(404, {"error": "не найдено"})
 
@@ -84,27 +155,25 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": "некорректный JSON"})
 
         text = str(payload.get("text", "")).strip()[:MAX_TEXT]
-        voice = str(payload.get("voice", "baya"))
+        voice = str(payload.get("voice", "")).strip()
         if not text:
             return self._json(400, {"error": "текст пуст"})
-        if voice not in VOICES:
-            return self._json(400, {"error": f"нет голоса «{voice}», доступны: {', '.join(VOICES)}"})
 
         try:
-            wav = synth_wav(text, voice)
+            audio, ctype = synthesize(text, voice)
         except Exception as err:  # noqa: BLE001 — отдаём причину клиенту
             return self._json(500, {"error": f"ошибка синтеза: {err}"})
 
         self.send_response(200)
-        self.send_header("Content-Type", "audio/wav")
-        self.send_header("Content-Length", str(len(wav)))
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(audio)))
         self.end_headers()
-        self.wfile.write(wav)
+        self.wfile.write(audio)
 
     def log_message(self, fmt, *args):
         print(f"{self.address_string()} {fmt % args}", flush=True)
 
 
 if __name__ == "__main__":
-    print(f"TTS: http://0.0.0.0:{PORT}", flush=True)
+    print(f"TTS: http://0.0.0.0:{PORT} (движок: {ENGINE})", flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

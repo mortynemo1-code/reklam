@@ -11,9 +11,9 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 // Серверная озвучка (Silero TTS). Если TTS_URL не задан или сервис недоступен,
 // фронтенд сам откатывается на голос браузера (Web Speech API).
 const TTS_URL = process.env.TTS_URL || "";
-const TTS_VOICE = process.env.TTS_VOICE || "baya";
+const TTS_VOICE = process.env.TTS_VOICE || ""; // пусто = голос по умолчанию движка
 const TTS_CACHE_MAX = 32;
-const ttsCache = new Map(); // hash(text+voice) → Buffer с WAV
+const ttsCache = new Map(); // hash(text+voice) → {audio: Buffer, type: string}
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -79,23 +79,27 @@ async function handleTts(req, res) {
   if (!text) return sendJson(res, 400, { error: "текст пуст" });
 
   const key = crypto.createHash("sha256").update(TTS_VOICE + "\0" + text).digest("hex");
-  let wav = ttsCache.get(key);
-  if (!wav) {
+  let entry = ttsCache.get(key);
+  if (!entry) {
     const upstream = await fetch(TTS_URL + "/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, voice: TTS_VOICE })
+      body: JSON.stringify({ text, voice: TTS_VOICE }),
+      signal: AbortSignal.timeout(90000)
     }).catch((err) => ({ ok: false, statusText: err.message }));
     if (!upstream.ok) {
       return sendJson(res, 502, { error: "сервис озвучки недоступен: " + upstream.statusText });
     }
-    wav = Buffer.from(await upstream.arrayBuffer());
+    entry = {
+      audio: Buffer.from(await upstream.arrayBuffer()),
+      type: upstream.headers.get("content-type") || "audio/mpeg"
+    };
     if (ttsCache.size >= TTS_CACHE_MAX) ttsCache.delete(ttsCache.keys().next().value);
-    ttsCache.set(key, wav);
+    ttsCache.set(key, entry);
   }
 
-  res.writeHead(200, { "Content-Type": "audio/wav", "Content-Length": wav.length });
-  res.end(wav);
+  res.writeHead(200, { "Content-Type": entry.type, "Content-Length": entry.audio.length });
+  res.end(entry.audio);
 }
 
 async function handleApi(req, res, url) {

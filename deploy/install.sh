@@ -52,8 +52,14 @@ if [ ! -f .env ]; then
   pass=$(head -c 18 /dev/urandom | base64 | tr -d '/+=')
   cat > .env << ENV
 POSTGRES_PASSWORD=$pass
-# Голос озвучки: baya, kseniya (женские), aidar, eugene (мужские), xenia
-#TTS_VOICE=baya
+# Голос озвучки. Движок по умолчанию — нейроголоса Microsoft (edge):
+#   dmitry (мужской, по умолчанию), svetlana (женский)
+#TTS_VOICE=dmitry
+# Платный вариант повышенной надёжности — Яндекс SpeechKit:
+# создайте API-ключ в консоли Яндекс Облака и укажите его здесь,
+# голоса: alena, filipp, jane, ermil, marina, alexander и др.
+#YANDEX_API_KEY=
+#TTS_VOICE=alena
 # HTTPS на своём домене: направьте A-запись домена на IP этого сервера,
 # затем раскомментируйте две строки ниже и выполните: docker compose up -d
 #DOMAIN=example.ru

@@ -17,6 +17,8 @@ services:
   tts:
     build: ./tts
     environment:
+      TTS_ENGINE: ${TTS_ENGINE:-auto}
+      YANDEX_API_KEY: ${YANDEX_API_KEY:-}
       TTS_THREADS: ${TTS_THREADS:-4}
     restart: unless-stopped
 
@@ -27,7 +29,7 @@ services:
     environment:
       DATABASE_URL: postgres://reklam:${POSTGRES_PASSWORD:-reklam}@db:5432/reklam
       TTS_URL: http://tts:5002
-      TTS_VOICE: ${TTS_VOICE:-baya}
+      TTS_VOICE: ${TTS_VOICE:-}
     depends_on:
       db:
         condition: service_healthy
