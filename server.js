@@ -113,15 +113,25 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-store
-  .init()
-  .then(() => {
-    server.listen(PORT, () => {
-      console.log(`Рекламации: http://localhost:${PORT}`);
-    });
-  })
-  .catch((err) => {
-    console.error("Не удалось подключиться к PostgreSQL:", err.message);
-    console.error("Проверьте DATABASE_URL или переменные PGHOST/PGUSER/PGPASSWORD/PGDATABASE.");
-    process.exit(1);
-  });
+async function start() {
+  const attempts = 15;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      await store.init();
+      server.listen(PORT, () => {
+        console.log(`Рекламации: http://localhost:${PORT}`);
+      });
+      return;
+    } catch (err) {
+      if (i === attempts) {
+        console.error("Не удалось подключиться к PostgreSQL:", err.message);
+        console.error("Проверьте DATABASE_URL или переменные PGHOST/PGUSER/PGPASSWORD/PGDATABASE.");
+        process.exit(1);
+      }
+      console.log(`PostgreSQL ещё не готов (${err.message}), попытка ${i}/${attempts}…`);
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+}
+
+start();

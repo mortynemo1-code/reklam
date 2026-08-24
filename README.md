@@ -2,12 +2,26 @@
 
 Веб-приложение для озвучивания текстов рекламаций голосом. Пользователь добавляет текст рекламации, нажимает «Озвучить» — текст произносится синтезатором речи (Web Speech API) с пословной подсветкой на экране в стиле «экран зала». Рекламации хранятся в PostgreSQL: их можно добавлять, редактировать и удалять.
 
-## Требования
+## Запуск в Docker (рекомендуемый способ)
 
-- Node.js ≥ 18
-- PostgreSQL (проверено на 16)
+Нужны только Docker и Docker Compose — Node и PostgreSQL ставить не надо, база поднимается в соседнем контейнере автоматически:
 
-## Запуск
+```bash
+docker compose up -d --build
+```
+
+Сайт откроется на http://localhost:3000. Данные PostgreSQL хранятся в докер-томе `pgdata` и переживают перезапуски и пересборки.
+
+Настройки (опционально, через переменные окружения или файл `.env` рядом с `docker-compose.yml`):
+
+- `PORT` — внешний порт сайта (по умолчанию 3000);
+- `POSTGRES_PASSWORD` — пароль базы (по умолчанию `reklam`; для сервера, доступного извне, задайте свой).
+
+Полезные команды: `docker compose logs -f app` — логи, `docker compose down` — остановить (данные останутся), `docker compose down -v` — остановить и стереть базу.
+
+## Запуск без Docker
+
+Требуются Node.js ≥ 18 и PostgreSQL (проверено на 16).
 
 1. Создайте базу и пользователя (один раз):
 
@@ -29,7 +43,7 @@ DATABASE_URL=postgres://reklam:reklam@localhost:5432/reklam npm start
 
 ### Настройка подключения
 
-Либо одной строкой `DATABASE_URL=postgres://user:pass@host:5432/dbname`, либо стандартными переменными окружения pg: `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` (по умолчанию база `reklam`).
+Либо одной строкой `DATABASE_URL=postgres://user:pass@host:5432/dbname`, либо стандартными переменными окружения pg: `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` (по умолчанию база `reklam`). Если PostgreSQL недоступен при старте, сервер повторяет попытки подключения ~30 секунд, затем завершается с ошибкой.
 
 ## Возможности
 
@@ -40,9 +54,11 @@ DATABASE_URL=postgres://reklam:reklam@localhost:5432/reklam npm start
 ## Архитектура
 
 ```
-server.js   — HTTP-сервер (node:http): статика + REST API
-db.js       — слой PostgreSQL (пул pg), схема и CRUD
-public/     — фронтенд: index.html, styles.css, app.js
+server.js            — HTTP-сервер (node:http): статика + REST API
+db.js                — слой PostgreSQL (пул pg), схема и CRUD
+public/              — фронтенд: index.html, styles.css, app.js
+Dockerfile           — образ приложения (node:22-alpine)
+docker-compose.yml   — приложение + PostgreSQL 16 + том pgdata
 ```
 
 ### REST API
