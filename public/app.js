@@ -26,6 +26,8 @@
     btnPrev: $("btnPrev"),
     btnNext: $("btnNext"),
     btnManage: $("btnManage"),
+    rateSlider: $("rateSlider"),
+    rateVal: $("rateVal"),
     drawer: $("drawer"),
     drawerBackdrop: $("drawerBackdrop"),
     btnCloseDrawer: $("btnCloseDrawer"),
@@ -51,12 +53,16 @@
 
   const BROWSER_RATE = 0.95;
 
+  let savedRate = 1;
+  try { savedRate = parseFloat(localStorage.getItem("reklamRate")) || 1; } catch { /* приватный режим */ }
+
   const state = {
     items: [],
     i: 0,
     editingId: null,
     playing: false,
-    paused: false
+    paused: false,
+    rate: Math.min(1.6, Math.max(0.6, savedRate))
   };
 
   // ── API ────────────────────────────────────────────────
@@ -116,7 +122,12 @@
       if (this.audio) return;
       this.audio = new Audio();
       this.audio.preload = "auto";
+      this.audio.preservesPitch = true; // скорость меняется без изменения тона
       this.audio.onended = () => this.finish();
+    },
+
+    applyRate() {
+      if (this.audio) this.audio.playbackRate = state.rate;
     },
 
     ensureAnalyser() {
@@ -186,6 +197,7 @@
         if (this.audioUrl) URL.revokeObjectURL(this.audioUrl);
         this.audioUrl = URL.createObjectURL(blob);
         this.audio.src = this.audioUrl;
+        this.applyRate();
         this.ensureAnalyser();
         await this.audio.play();
         if (this.seq !== mySeq) { this.audio.pause(); return; }
@@ -218,7 +230,7 @@
       synth.cancel();
       const u = new SpeechSynthesisUtterance(prefix + body);
       u.lang = "ru-RU";
-      u.rate = BROWSER_RATE;
+      u.rate = BROWSER_RATE * state.rate;
       u.pitch = 1;
       const v = this.pickVoice();
       if (v) u.voice = v;
@@ -335,7 +347,7 @@
         } else {
           const since = (now - speech.lastBoundary) / 1000;
           if (!speech.gotBoundary) {
-            const wps = 2.5 * BROWSER_RATE;
+            const wps = 2.5 * BROWSER_RATE * state.rate;
             const el = (now - speech.estStart) / 1000;
             const n = Math.min(speech.starts.length, Math.floor(el * wps));
             setRev(n);
@@ -636,6 +648,20 @@
   els.btnStop.onclick = () => speech.stop();
   els.btnPrev.onclick = () => go(-1);
   els.btnNext.onclick = () => go(1);
+
+  // ── скорость озвучивания ───────────────────────────────
+  function renderRate() {
+    els.rateVal.textContent = state.rate.toFixed(2).replace(/0$/, "") + "×";
+    els.rateSlider.value = state.rate;
+  }
+
+  els.rateSlider.oninput = () => {
+    state.rate = parseFloat(els.rateSlider.value) || 1;
+    speech.applyRate(); // действует сразу, даже во время речи
+    try { localStorage.setItem("reklamRate", String(state.rate)); } catch { /* приватный режим */ }
+    renderRate();
+  };
+  renderRate();
 
   window.addEventListener("keydown", (e) => {
     if (e.target.matches("input, textarea, select")) return;

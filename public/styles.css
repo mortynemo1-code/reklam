@@ -235,6 +235,56 @@ button { font: inherit; }
   margin: 0 0.3em;
 }
 
+/* регулятор скорости озвучивания */
+.rate {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.55em 1em;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.rate-val {
+  color: #8A93AD;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  min-width: 2.9em;
+  text-align: center;
+}
+
+.rate input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 7em;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #FF8C3D, #1F3FF5);
+  outline: none;
+  cursor: pointer;
+}
+
+.rate input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+  box-shadow: 0 0 6px rgba(255, 140, 61, 0.7);
+}
+
+.rate input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+  box-shadow: 0 0 6px rgba(255, 140, 61, 0.7);
+}
+
 /* ── панель рекламаций ──────────────────────────────────── */
 .drawer[hidden],
 .drawer-backdrop[hidden] { display: none; }
