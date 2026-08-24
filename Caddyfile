@@ -1,0 +1,6 @@
+# Обратный прокси с автоматическим HTTPS (Let's Encrypt).
+# Домен задаётся переменной DOMAIN в .env; сертификат выпускается сам.
+{$DOMAIN:localhost} {
+	encode gzip
+	reverse_proxy app:3012
+}

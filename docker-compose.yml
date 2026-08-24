@@ -35,5 +35,25 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  # HTTPS для своего домена: включается профилем `https`
+  # (в .env: DOMAIN=ваш-домен.ru и COMPOSE_PROFILES=https)
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["https"]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:
